@@ -37,7 +37,8 @@ interface WebhookResponse {
   signature: string;
 }
 
-const allowedOrigin = process.env.ALLOWED_ORIGIN || 'https://comet-store.vercel.app';
+const allowedOrigin = process.env.ALLOWED_ORIGIN || 'https://comet-store.vercel.app/';
+console.log("hihihii", process.env.ALLOWED_ORIGIN);
 
 const corsHeaders = {
   'Access-Control-Allow-Origin': allowedOrigin,
@@ -53,7 +54,7 @@ export async function OPTIONS() {
 // API POST: Nhận dữ liệu từ frontend, tạo liên kết thanh toán và lưu vào DB
 export async function POST(req: NextRequest) {
   try {
-    const DOMAIN = process.env.ECOMMERCE_STORE_URL;
+    const DOMAIN = 'https://comet-store.vercel.app/';
 
     // Lấy dữ liệu từ cookies
     const customerData = cookies().get('customer');
