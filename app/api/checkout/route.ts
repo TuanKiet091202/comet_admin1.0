@@ -1,57 +1,165 @@
-import { NextRequest, NextResponse } from "next/server";
-import { stripe } from "@/lib/stripe";
+import { NextRequest, NextResponse } from 'next/server';
+import PayOS from '@/lib/payos';
+import { connectToDB } from '@/lib/mongoDB';
+import Customer from '@/lib/models/Customer';
+import Order from '@/lib/models/Order';
+import mongoose from 'mongoose';
+import { cookies } from 'next/headers';
+
+interface CartItem {
+  item: {
+    _id: string;
+    title: string;
+    price: number;
+    size?: string;
+  };
+  quantity: number;
+}
+
+interface WebhookResponse {
+  code: string;
+  desc: string;
+  data: {
+    orderCode: number;
+    amount: number;
+    description: string;
+    paymentLinkId: string;
+    status: string;
+    buyerName: string;
+    items?: {
+      productId: string;
+      size: string;
+      name: string;
+      quantity: number;
+      price: number;
+    }[];
+  };
+  signature: string;
+}
+
+const allowedOrigin = process.env.ALLOWED_ORIGIN || 'http://localhost:3001';
 
 const corsHeaders = {
-  "Access-Control-Allow-Origin": "*",
-  "Access-Control-Allow-Methods": "GET, POST, PUT, DELETE, OPTIONS",
-  "Access-Control-Allow-Headers": "Content-Type, Authorization",
+  'Access-Control-Allow-Origin': allowedOrigin,
+  'Access-Control-Allow-Methods': 'GET, POST, PUT, DELETE, OPTIONS',
+  'Access-Control-Allow-Headers': 'Content-Type, Authorization',
+  'Access-Control-Allow-Credentials': 'true',
 };
 
 export async function OPTIONS() {
   return NextResponse.json({}, { headers: corsHeaders });
 }
 
+// API POST: Nhận dữ liệu từ frontend, tạo liên kết thanh toán và lưu vào DB
 export async function POST(req: NextRequest) {
   try {
-    const { cartItems, customer } = await req.json();
+    const DOMAIN = process.env.ECOMMERCE_STORE_URL;
 
-    if (!cartItems || !customer) {
-      return new NextResponse("Not enough data to checkout", { status: 400 });
+    // Lấy dữ liệu từ cookies
+    const customerData = cookies().get('customer');
+    const cartData = cookies().get('cartItems');
+    const addressData = cookies().get('shippingAddress');
+
+    console.log('Customer Data:', customerData);
+    console.log('Cart Data:', cartData);
+    console.log('Shipping Address Data:', addressData);
+
+    if (!customerData || !cartData || !addressData) {
+      return new NextResponse('Missing data in cookies', {
+        status: 400,
+        headers: corsHeaders,
+      });
     }
 
-    const session = await stripe.checkout.sessions.create({
-      payment_method_types: ["card"],
-      mode: "payment",
-      shipping_address_collection: {
-        allowed_countries: ["US", "VN"],
+    // Chuyển đổi dữ liệu JSON từ cookies
+    const customer = JSON.parse(customerData.value);
+    const cartItems = JSON.parse(cartData.value);
+    const shippingAddress = JSON.parse(addressData.value);
+
+    console.log('Received cart items:', cartItems);
+    console.log('Received customer:', customer);
+    console.log('Received shipping address:', shippingAddress);
+
+    // Tạo danh sách sản phẩm từ giỏ hàng
+    const lineItems = cartItems.map((cartItem: CartItem) => ({
+      name: cartItem.item.title,
+      price: cartItem.item.price,
+      quantity: cartItem.quantity,
+      metadata: {
+        productId: cartItem.item._id,
+        size: cartItem.item.size || 'N/A',
       },
-      shipping_options: [
-        { shipping_rate: "shr_1Q9VHnHKwhDuSVYn4QdQeaD7" },
-        { shipping_rate: "shr_1Q9VIrHKwhDuSVYnjJf1YBDg" },
-      ],
-      line_items: cartItems.map((cartItem: any) => ({
-        price_data: {
-          currency: "vnd",
-          product_data: {
-            name: cartItem.item.title,
-            metadata: {
-              productId: cartItem.item._id,
-              ...(cartItem.size && { size: cartItem.size }),
-              // ...(cartItem.color && { color: cartItem.color }),
-            },
-          },
-          unit_amount: cartItem.item.price,
-        },
-        quantity: cartItem.quantity,
+    }));
+
+    // Tính tổng tiền
+    const totalAmount = lineItems.reduce(
+      (acc: number, item: any) => acc + item.price * item.quantity,
+      0
+    );
+
+    // Tạo payload cho PayOS
+    const body = {
+      orderCode: Number(Date.now().toString().slice(-6)),
+      amount: totalAmount,
+      description: 'Thanh toán đơn hàng',
+      items: lineItems,
+      returnUrl: `${DOMAIN}/payment_success`,
+      cancelUrl: `${DOMAIN}/cart`,
+    };
+
+    // Gọi API PayOS để tạo liên kết thanh toán
+    const paymentLinkResponse = await PayOS.createPaymentLink(body);
+    const { checkoutUrl, orderCode } = paymentLinkResponse;
+
+    console.log('Payment Link:', checkoutUrl);
+
+    // Lưu dữ liệu vào MongoDB
+    await connectToDB();
+    console.log('Connected to MongoDB.');
+
+    // Tạo đơn hàng mới
+    const newOrder = new Order({
+      customerClerkId: customer.clerkId,
+      products: cartItems.map((item: any) => ({
+        product: new mongoose.Types.ObjectId(item.item._id),
+        size: item.size || 'N/A',
+        quantity: item.quantity,
       })),
-      client_reference_id: customer.clerkId,
-      success_url: `${process.env.ECOMMERCE_STORE_URL}/payment_success`,
-      cancel_url: `${process.env.ECOMMERCE_STORE_URL}/cart`,
+      shippingAddress,
+      totalAmount,
+      orderCode,
     });
 
-    return NextResponse.json(session, { headers: corsHeaders });
-  } catch (err) {
-    console.log("[checkout_POST]", err);
-    return new NextResponse("Internal Server Error", { status: 500 });
+    await newOrder.save();
+    console.log('Order saved to DB:', newOrder);
+
+    // Tìm hoặc tạo khách hàng mới
+    let existingCustomer = await Customer.findOne({ clerkId: customer.clerkId });
+
+    if (existingCustomer) {
+      existingCustomer.orders.push(newOrder._id);
+    } else {
+      existingCustomer = new Customer({
+        clerkId: customer.clerkId,
+        name: customer.name,
+        email: customer.email,
+        orders: [newOrder._id],
+      });
+    }
+
+    await existingCustomer.save();
+    console.log('Customer saved/updated in DB:', existingCustomer);
+
+    // Trả về liên kết thanh toán và dữ liệu đơn hàng
+    return NextResponse.json(
+      { paymentLink: checkoutUrl, orderCode, cartItems, customer, shippingAddress },
+      { status: 200, headers: corsHeaders }
+    );
+  } catch (error) {
+    console.error('[checkout_POST] Error:', error);
+    return new NextResponse('Internal server error.', {
+      status: 500,
+      headers: corsHeaders,
+    });
   }
 }

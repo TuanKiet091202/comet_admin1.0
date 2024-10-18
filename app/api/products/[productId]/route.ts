@@ -71,10 +71,10 @@ export const POST = async (
       expense,
     } = await req.json();
 
+    // Validate required fields
     if (
       !title?.trim() ||
       !description?.trim() ||
-      !media?.trim() ||
       !category?.trim() ||
       !price ||
       !expense
@@ -84,27 +84,35 @@ export const POST = async (
       });
     }
 
+    // Validate media array
+    if (!Array.isArray(media) || media.length === 0) {
+      return new NextResponse("Media must be a non-empty array", { status: 400 });
+    }
+
+    // Ensure all elements in media are valid non-empty strings
+    const invalidMedia = media.some((item) => typeof item !== "string" || !item.trim());
+    if (invalidMedia) {
+      return new NextResponse(
+        "Each media item must be a non-empty string",
+        { status: 400 }
+      );
+    }
 
     const addedCollections = collections.filter(
       (collectionId: string) => !product.collections.includes(collectionId)
     );
-    // included in new data, but not included in the previous data
 
     const removedCollections = product.collections.filter(
       (collectionId: string) => !collections.includes(collectionId)
     );
-    // included in previous data, but not included in the new data
 
     // Update collections
     await Promise.all([
-      // Update added collections with this product
       ...addedCollections.map((collectionId: string) =>
         Collection.findByIdAndUpdate(collectionId, {
           $push: { products: product._id },
         })
       ),
-
-      // Update removed collections without this product
       ...removedCollections.map((collectionId: string) =>
         Collection.findByIdAndUpdate(collectionId, {
           $pull: { products: product._id },
@@ -112,7 +120,7 @@ export const POST = async (
       ),
     ]);
 
-    // Update product
+    // Update product with new data
     const updatedProduct = await Product.findByIdAndUpdate(
       product._id,
       {
@@ -129,14 +137,20 @@ export const POST = async (
       { new: true }
     ).populate({ path: "collections", model: Collection });
 
+    console.log("-----Up", updatedProduct);
+
     await updatedProduct.save();
 
     return NextResponse.json(updatedProduct, { status: 200 });
-  } catch (err) {
-    console.log("[productId_POST]", err);
-    return new NextResponse("Internal error", { status: 500 });
+  } catch (err: any) {
+    console.error("[productId_POST]", err);
+    return new NextResponse(
+      JSON.stringify({ error: err.message || "Internal Server Error" }),
+      { status: 500 }
+    );
   }
 };
+
 
 export const DELETE = async (
   req: NextRequest,
