@@ -37,7 +37,7 @@ interface WebhookResponse {
   signature: string;
 }
 
-const allowedOrigin = process.env.ALLOWED_ORIGIN || 'http://localhost:3001';
+const allowedOrigin = process.env.ALLOWED_ORIGIN || process.env.ECOMMERCE_STORE_URL;
 
 const corsHeaders = {
   'Access-Control-Allow-Origin': allowedOrigin,
