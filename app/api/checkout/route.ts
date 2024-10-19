@@ -5,6 +5,7 @@ import Customer from '@/lib/models/Customer';
 import Order from '@/lib/models/Order';
 import mongoose from 'mongoose';
 import { cookies } from 'next/headers';
+import NextCors from 'nextjs-cors'; // Import nextjs-cors
 
 interface CartItem {
   item: {
@@ -16,8 +17,21 @@ interface CartItem {
   quantity: number;
 }
 
+// Middleware để cấu hình CORS
+async function corsMiddleware(req: NextRequest) {
+  await NextCors(req, NextResponse.next(), {
+    methods: ['GET', 'POST', 'OPTIONS'],
+    origin: 'https://comet-store.vercel.app', // Domain của frontend
+    optionsSuccessStatus: 204,
+    credentials: true, // Gửi cookie kèm theo request
+  });
+}
+
+// Hàm xử lý POST request
 export async function POST(req: NextRequest) {
   try {
+    await corsMiddleware(req); // Chạy middleware CORS
+
     const payload = await req.json();
     const DOMAIN = 'https://comet-store.vercel.app';
 
@@ -98,4 +112,10 @@ export async function POST(req: NextRequest) {
     console.error('[checkout_POST] Error:', error);
     return new NextResponse('Internal server error.', { status: 500 });
   }
+}
+
+// Xử lý preflight OPTIONS request
+export async function OPTIONS(req: NextRequest) {
+  await corsMiddleware(req); // Chạy middleware CORS
+  return new NextResponse(null, { status: 204 });
 }
