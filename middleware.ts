@@ -1,24 +1,45 @@
 import { authMiddleware } from "@clerk/nextjs";
 import { NextRequest, NextResponse, NextFetchEvent } from "next/server";
 
+// Sử dụng middleware của Clerk với các route công khai.
+const handler = authMiddleware({
+  publicRoutes: ["/api/:path*", "/ws/:path*"],
+});
+
 // Middleware chính
-export default async function middleware(
-  req: NextRequest,
-  event: NextFetchEvent
-): Promise<NextResponse> {
-  // Xử lý CORS trước khi đi vào logic khác
-  const corsResponse = handleCors(req);
-  if (corsResponse) return corsResponse;
+export default async function middleware(req: NextRequest, event: NextFetchEvent): Promise<NextResponse> {
+  const origin = req.headers.get("origin");
 
-  // Thực hiện xác thực thông qua Clerk
-  const handler = authMiddleware({
-    publicRoutes: ["/api/:path*", "/ws/:path*"],
-  });
+  // Các origin được phép
+  const allowedOrigins = [
+    "https://comet-store.vercel.app",
+    "https://www.comet-store.vercel.app",
+  ];
 
-  // Gọi authMiddleware và truyền req cùng event vào
+  if (origin && !allowedOrigins.includes(origin)) {
+    return new NextResponse("Origin not allowed", { status: 403 });
+  }
+
+  // Xử lý preflight OPTIONS request
+  if (req.method === "OPTIONS") {
+    return NextResponse.json(
+      { message: "Preflight OK" },
+      {
+        status: 204,
+        headers: {
+          "Access-Control-Allow-Origin": origin || "",
+          "Access-Control-Allow-Methods": "GET, POST, PUT, DELETE, OPTIONS",
+          "Access-Control-Allow-Headers": "Content-Type, Authorization",
+          "Access-Control-Allow-Credentials": "true",
+        },
+      }
+    );
+  }
+
+  // Gọi authMiddleware với đúng 2 tham số
   const response = await handler(req, event);
 
-  // Đảm bảo trả về NextResponse
+  // Chuyển đổi nếu response là Response thay vì NextResponse
   if (response instanceof Response) {
     return new NextResponse(response.body, {
       status: response.status,
@@ -26,33 +47,17 @@ export default async function middleware(
     });
   }
 
-  // Trả về mặc định nếu không có response hợp lệ
-  return response || NextResponse.json({ error: "Unexpected response" }, { status: 500 });
-}
-
-// Hàm xử lý CORS riêng biệt
-function handleCors(req: NextRequest) {
-  const headers = new Headers();
-  headers.set(
-    "Access-Control-Allow-Origin",
-    process.env.ALLOWED_ORIGIN || "https://comet-store.vercel.app"
+  // Trả về response hoặc lỗi mặc định
+  return (
+    response || NextResponse.json({ error: "Unexpected response" }, { status: 500 })
   );
-  headers.set("Access-Control-Allow-Methods", "GET, POST, PUT, DELETE, OPTIONS");
-  headers.set("Access-Control-Allow-Headers", "Content-Type, Authorization");
-  headers.set("Access-Control-Allow-Credentials", "true");
-
-  // Xử lý request OPTIONS (preflight)
-  if (req.method === "OPTIONS") {
-    return new NextResponse(null, { status: 204, headers });
-  }
-  return null; // Tiếp tục nếu không phải OPTIONS request
 }
 
-// Cấu hình matcher cho middleware
+// Cấu hình matcher
 export const config = {
   matcher: [
     "/((?!.*\\..*|_next).*)", // Bỏ qua static files và _next
-    "/",                      // Áp dụng cho route gốc
+    "/",                      // Áp dụng cho root route
     "/(api|trpc)(.*)",         // Áp dụng cho API và trpc routes
   ],
 };

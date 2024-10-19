@@ -15,12 +15,13 @@ interface CartItem {
   quantity: number;
 }
 
-// Xử lý request POST
+// Cấu hình và xử lý request POST
 export async function POST(req: NextRequest) {
   try {
     const payload = await req.json();
-    const DOMAIN = 'https://www.comet-store.vercel.app';
+    const DOMAIN = 'https://comet-store.vercel.app';
 
+    // Lấy cookies từ request
     const customerData = req.cookies.get('customer')?.value;
     const cartData = req.cookies.get('cartItems')?.value;
     const addressData = req.cookies.get('shippingAddress')?.value;
@@ -29,10 +30,17 @@ export async function POST(req: NextRequest) {
       return NextResponse.json({ error: 'Missing data in cookies' }, { status: 400 });
     }
 
-    const customer = JSON.parse(customerData);
-    const cartItems = JSON.parse(cartData);
-    const shippingAddress = JSON.parse(addressData);
+    // Kiểm tra lỗi khi parse dữ liệu JSON
+    let customer, cartItems, shippingAddress;
+    try {
+      customer = JSON.parse(customerData);
+      cartItems = JSON.parse(cartData);
+      shippingAddress = JSON.parse(addressData);
+    } catch (err) {
+      return NextResponse.json({ error: 'Invalid cookie data' }, { status: 400 });
+    }
 
+    // Tạo line items từ cart items
     const lineItems = cartItems.map((cartItem: CartItem) => ({
       name: cartItem.item.title,
       price: cartItem.item.price,
@@ -43,8 +51,13 @@ export async function POST(req: NextRequest) {
       },
     }));
 
-    const totalAmount = lineItems.reduce((acc: number, item: any) => acc + item.price * item.quantity, 0);
+    // Tính tổng tiền
+    const totalAmount = lineItems.reduce(
+      (acc: number, item: any) => acc + item.price * item.quantity,
+      0
+    );
 
+    // Payload cho API PayOS
     const body = {
       orderCode: Number(Date.now().toString().slice(-6)),
       amount: totalAmount,
@@ -54,11 +67,14 @@ export async function POST(req: NextRequest) {
       cancelUrl: `${DOMAIN}/cart`,
     };
 
+    // Gọi API PayOS để tạo link thanh toán
     const paymentLinkResponse = await PayOS.createPaymentLink(body);
     const { checkoutUrl, orderCode } = paymentLinkResponse;
 
+    // Kết nối tới MongoDB
     await connectToDB();
 
+    // Tạo đơn hàng mới
     const newOrder = new Order({
       customerClerkId: customer.clerkId,
       products: cartItems.map((item: any) => ({
@@ -73,6 +89,7 @@ export async function POST(req: NextRequest) {
 
     await newOrder.save();
 
+    // Kiểm tra xem khách hàng đã tồn tại chưa
     let existingCustomer = await Customer.findOne({ clerkId: customer.clerkId });
     if (existingCustomer) {
       existingCustomer.orders.push(newOrder._id);
@@ -87,12 +104,22 @@ export async function POST(req: NextRequest) {
 
     await existingCustomer.save();
 
+    // Trả về phản hồi JSON với link thanh toán và dữ liệu đơn hàng
     return NextResponse.json(
-      { paymentLink: checkoutUrl, orderCode, cartItems, customer, shippingAddress },
+      {
+        paymentLink: checkoutUrl,
+        orderCode,
+        cartItems,
+        customer,
+        shippingAddress,
+      },
       { status: 200 }
     );
   } catch (error) {
     console.error('[checkout_POST] Error:', error);
-    return NextResponse.json({ error: 'Internal server error' }, { status: 500 });
+    return NextResponse.json(
+      { error: 'Internal server error' },
+      { status: 500 }
+    );
   }
 }
