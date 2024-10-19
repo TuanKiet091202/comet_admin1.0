@@ -1,10 +1,11 @@
-import { NextResponse } from 'next/server';
+import { NextRequest, NextResponse } from 'next/server';
 import PayOS from '@/lib/payos';
 import { connectToDB } from '@/lib/mongoDB';
 import Customer from '@/lib/models/Customer';
 import Order from '@/lib/models/Order';
 import mongoose from 'mongoose';
 import { cookies } from 'next/headers';
+import NextCors from 'nextjs-cors'; // Import nextjs-cors
 
 interface CartItem {
   item: {
@@ -16,12 +17,21 @@ interface CartItem {
   quantity: number;
 }
 
-// Định nghĩa handler cho POST request
-export async function POST(req: Request) {
+// Middleware xử lý CORS
+export async function POST(req: NextRequest) {
+  // Cấu hình middleware CORS
+  await NextCors(req, NextResponse.next(), {
+    methods: ['GET', 'POST', 'PUT', 'DELETE', 'OPTIONS'],
+    origin: 'https://comet-store.vercel.app',
+    optionsSuccessStatus: 204,
+    credentials: true,
+  });
+
   try {
     const payload = await req.json();
     const DOMAIN = 'https://comet-store.vercel.app';
 
+    // Lấy dữ liệu từ cookies
     const customerData = cookies().get('customer');
     const cartData = cookies().get('cartItems');
     const addressData = cookies().get('shippingAddress');
