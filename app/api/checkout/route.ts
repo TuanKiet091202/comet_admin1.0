@@ -51,7 +51,7 @@ export async function OPTIONS() {
   return NextResponse.json({}, { headers: corsHeaders });
 }
 
-// API POST: Nhận dữ liệu từ frontend, tạo liên kết thanh toán và lưu vào DB
+// API POST: Tạo liên kết thanh toán và lưu vào DB
 export async function POST(req: NextRequest) {
   try {
     const DOMAIN = 'https://comet-store.vercel.app';
