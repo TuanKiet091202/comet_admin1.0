@@ -25,24 +25,14 @@ export async function POST(req: NextRequest) {
     const cartData = cookies().get('cartItems');
     const addressData = cookies().get('shippingAddress');
 
-    console.log('Customer Data:', customerData);
-    console.log('Cart Data:', cartData);
-    console.log('Shipping Address Data:', addressData);
-
     if (!customerData || !cartData || !addressData) {
       return NextResponse.json({ error: 'Missing data in cookies' }, { status: 400 });
     }
 
-    // Chuyển đổi dữ liệu JSON từ cookies
     const customer = JSON.parse(customerData.value);
     const cartItems = JSON.parse(cartData.value);
     const shippingAddress = JSON.parse(addressData.value);
 
-    console.log('Received cart items:', cartItems);
-    console.log('Received customer:', customer);
-    console.log('Received shipping address:', shippingAddress);
-
-    // Tạo danh sách sản phẩm từ giỏ hàng
     const lineItems = cartItems.map((cartItem: CartItem) => ({
       name: cartItem.item.title,
       price: cartItem.item.price,
@@ -53,13 +43,11 @@ export async function POST(req: NextRequest) {
       },
     }));
 
-    // Tính tổng tiền
     const totalAmount = lineItems.reduce(
       (acc: number, item: any) => acc + item.price * item.quantity,
       0
     );
 
-    // Tạo payload cho PayOS
     const body = {
       orderCode: Number(Date.now().toString().slice(-6)),
       amount: totalAmount,
@@ -69,17 +57,11 @@ export async function POST(req: NextRequest) {
       cancelUrl: `${DOMAIN}/cart`,
     };
 
-    // Gọi API PayOS để tạo liên kết thanh toán
     const paymentLinkResponse = await PayOS.createPaymentLink(body);
     const { checkoutUrl, orderCode } = paymentLinkResponse;
 
-    console.log('Payment Link:', checkoutUrl);
-
-    // Lưu dữ liệu vào MongoDB
     await connectToDB();
-    console.log('Connected to MongoDB.');
 
-    // Tạo đơn hàng mới
     const newOrder = new Order({
       customerClerkId: customer.clerkId,
       products: cartItems.map((item: any) => ({
@@ -93,9 +75,7 @@ export async function POST(req: NextRequest) {
     });
 
     await newOrder.save();
-    console.log('Order saved to DB:', newOrder);
 
-    // Tìm hoặc tạo khách hàng mới
     let existingCustomer = await Customer.findOne({ clerkId: customer.clerkId });
 
     if (existingCustomer) {
@@ -110,9 +90,7 @@ export async function POST(req: NextRequest) {
     }
 
     await existingCustomer.save();
-    console.log('Customer saved/updated in DB:', existingCustomer);
 
-    // Trả về liên kết thanh toán và dữ liệu đơn hàng
     return NextResponse.json(
       { paymentLink: checkoutUrl, orderCode, cartItems, customer, shippingAddress },
       { status: 200 }
