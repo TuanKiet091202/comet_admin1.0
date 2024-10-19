@@ -48,12 +48,15 @@ const corsHeaders: Record<string, string> = {
 
 
 export async function OPTIONS() {
-  return NextResponse.json({}, { headers: corsHeaders });
+  return NextResponse.json({}, { headers: corsHeaders, status: 204 });
 }
 
 // API POST: Tạo liên kết thanh toán và lưu vào DB
 export async function POST(req: NextRequest) {
   try {
+    const payload = await req.json(); // Đọc và parse body
+
+    console.log("Request Body:", payload);
     const DOMAIN = 'https://comet-store.vercel.app';
 
     // Lấy dữ liệu từ cookies
