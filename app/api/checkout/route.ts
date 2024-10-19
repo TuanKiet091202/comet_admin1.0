@@ -1,11 +1,11 @@
 import { NextRequest, NextResponse } from 'next/server';
+import NextCors from 'nextjs-cors'; // Import thư viện nextjs-cors
 import PayOS from '@/lib/payos';
 import { connectToDB } from '@/lib/mongoDB';
 import Customer from '@/lib/models/Customer';
 import Order from '@/lib/models/Order';
 import mongoose from 'mongoose';
 import { cookies } from 'next/headers';
-import NextCors from 'nextjs-cors'; // Import nextjs-cors
 
 interface CartItem {
   item: {
@@ -17,21 +17,21 @@ interface CartItem {
   quantity: number;
 }
 
-// Middleware xử lý CORS
+// Hàm xử lý CORS và logic API checkout
 export async function POST(req: NextRequest) {
-  // Cấu hình middleware CORS
+  // Cấu hình và chạy middleware CORS
   await NextCors(req, NextResponse.next(), {
     methods: ['GET', 'POST', 'PUT', 'DELETE', 'OPTIONS'],
     origin: 'https://comet-store.vercel.app',
     optionsSuccessStatus: 204,
-    credentials: true,
+    credentials: true, // Cho phép gửi cookie trong request
   });
 
   try {
     const payload = await req.json();
     const DOMAIN = 'https://comet-store.vercel.app';
 
-    // Lấy dữ liệu từ cookies
+    // Lấy thông tin từ cookies
     const customerData = cookies().get('customer');
     const cartData = cookies().get('cartItems');
     const addressData = cookies().get('shippingAddress');
