@@ -16,55 +16,8 @@ interface CartItem {
   quantity: number;
 }
 
-interface WebhookResponse {
-  code: string;
-  desc: string;
-  data: {
-    orderCode: number;
-    amount: number;
-    description: string;
-    paymentLinkId: string;
-    status: string;
-    buyerName: string;
-    items?: {
-      productId: string;
-      size: string;
-      name: string;
-      quantity: number;
-      price: number;
-    }[];
-  };
-  signature: string;
-}
-
-const allowedOrigin = 'https://comet-store.vercel.app';
-console.log('Allowed Origin:', allowedOrigin);
-
-const corsHeaders: Record<string, string> = {
-  'Access-Control-Allow-Origin': allowedOrigin || '*',
-  'Access-Control-Allow-Methods': 'GET, POST, PUT, DELETE, OPTIONS',
-  'Access-Control-Allow-Headers': 'Content-Type, Authorization',
-  'Access-Control-Allow-Credentials': 'true',
-};
-
-export async function OPTIONS() {
-  return new NextResponse(null, {
-    headers: {
-      'Access-Control-Allow-Origin': 'https://comet-store.vercel.app',
-      'Access-Control-Allow-Methods': 'GET, POST, PUT, DELETE, OPTIONS',
-      'Access-Control-Allow-Headers': 'Content-Type, Authorization',
-      'Access-Control-Allow-Credentials': 'true',
-    },
-    status: 204,
-  });
-}
-
-// API POST: Tạo liên kết thanh toán và lưu vào DB
 export async function POST(req: NextRequest) {
   try {
-    const payload = await req.json(); // Đọc và parse body
-
-    console.log("Request Body:", payload);
     const DOMAIN = 'https://comet-store.vercel.app';
 
     // Lấy dữ liệu từ cookies
@@ -77,10 +30,7 @@ export async function POST(req: NextRequest) {
     console.log('Shipping Address Data:', addressData);
 
     if (!customerData || !cartData || !addressData) {
-      return new NextResponse('Missing data in cookies', {
-        status: 400,
-        headers: corsHeaders,
-      });
+      return NextResponse.json({ error: 'Missing data in cookies' }, { status: 400 });
     }
 
     // Chuyển đổi dữ liệu JSON từ cookies
@@ -165,13 +115,10 @@ export async function POST(req: NextRequest) {
     // Trả về liên kết thanh toán và dữ liệu đơn hàng
     return NextResponse.json(
       { paymentLink: checkoutUrl, orderCode, cartItems, customer, shippingAddress },
-      { status: 200, headers: corsHeaders }
+      { status: 200 }
     );
   } catch (error) {
     console.error('[checkout_POST] Error:', error);
-    return new NextResponse('Internal server error.', {
-      status: 500,
-      headers: corsHeaders,
-    });
+    return NextResponse.json({ error: 'Internal server error' }, { status: 500 });
   }
 }
