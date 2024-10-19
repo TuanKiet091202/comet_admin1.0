@@ -38,6 +38,7 @@ interface WebhookResponse {
 }
 
 const allowedOrigin = process.env.ALLOWED_ORIGIN || 'https://comet-store.vercel.app';
+console.log('Allowed Origin:', allowedOrigin);
 
 const corsHeaders: Record<string, string> = {
   'Access-Control-Allow-Origin': allowedOrigin || '*',
@@ -46,10 +47,10 @@ const corsHeaders: Record<string, string> = {
   'Access-Control-Allow-Credentials': 'true',
 };
 
-
 export async function OPTIONS() {
-  return NextResponse.json({}, { headers: corsHeaders, status: 204 });
+  return new NextResponse(null, { headers: corsHeaders, status: 204 });
 }
+
 
 // API POST: Tạo liên kết thanh toán và lưu vào DB
 export async function POST(req: NextRequest) {
