@@ -14,8 +14,10 @@ export default async function middleware(req: NextRequest, event: NextFetchEvent
   const allowedOrigins = [
     "https://comet-store.vercel.app",
     "https://www.comet-store.vercel.app",
+    "http://localhost:3001",
   ];
 
+  // Kiểm tra origin
   if (origin && !allowedOrigins.includes(origin)) {
     return new NextResponse("Origin not allowed", { status: 403 });
   }
@@ -36,21 +38,24 @@ export default async function middleware(req: NextRequest, event: NextFetchEvent
     );
   }
 
-  // Gọi authMiddleware với đúng 2 tham số
+  // Gọi authMiddleware
   const response = await handler(req, event);
 
-  // Chuyển đổi nếu response là Response thay vì NextResponse
+  // Nếu response là Response, thêm headers CORS
   if (response instanceof Response) {
-    return new NextResponse(response.body, {
+    const modifiedResponse = new NextResponse(response.body, {
       status: response.status,
       headers: response.headers,
     });
+
+    // Thêm các headers CORS
+    modifiedResponse.headers.set("Access-Control-Allow-Origin", origin || "");
+    modifiedResponse.headers.set("Access-Control-Allow-Credentials", "true");
+    return modifiedResponse;
   }
 
   // Trả về response hoặc lỗi mặc định
-  return (
-    response || NextResponse.json({ error: "Unexpected response" }, { status: 500 })
-  );
+  return response || NextResponse.json({ error: "Unexpected response" }, { status: 500 });
 }
 
 // Cấu hình matcher
@@ -58,6 +63,6 @@ export const config = {
   matcher: [
     "/((?!.*\\..*|_next).*)", // Bỏ qua static files và _next
     "/",                      // Áp dụng cho root route
-    "/(api|trpc)(.*)",         // Áp dụng cho API và trpc routes
+    "/(api|trpc)(.*)",        // Áp dụng cho API và trpc routes
   ],
 };
