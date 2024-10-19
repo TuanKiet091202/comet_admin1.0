@@ -1,51 +1,49 @@
-import { NextApiRequest, NextApiResponse } from 'next';
+import { NextRequest, NextResponse } from 'next/server';
 import PayOS from '@/lib/payos';
 import { connectToDB } from '@/lib/mongoDB';
 import Customer from '@/lib/models/Customer';
 import Order from '@/lib/models/Order';
 import mongoose from 'mongoose';
-import Cookies from 'js-cookie'; // Nếu bạn dùng cookies phía client.
 
-export default async function handler(
-  req: NextApiRequest,
-  res: NextApiResponse
-) {
-  // Xử lý preflight OPTIONS request với CORS headers
-  if (req.method === 'OPTIONS') {
-    res.setHeader('Access-Control-Allow-Origin', 'https://www.comet-store.vercel.app');
-    res.setHeader('Access-Control-Allow-Methods', 'GET, POST, PUT, DELETE, OPTIONS');
-    res.setHeader('Access-Control-Allow-Headers', 'Content-Type, Authorization');
-    res.setHeader('Access-Control-Allow-Credentials', 'true');
-    return res.status(204).end();
-  }
+interface CartItem {
+  item: {
+    _id: string;
+    title: string;
+    price: number;
+    size?: string;
+  };
+  quantity: number;
+}
 
-  if (req.method !== 'POST') {
-    return res.status(405).json({ message: 'Method Not Allowed' });
-  }
-
+// Xử lý request POST
+export async function POST(req: NextRequest) {
   try {
-    const { customer, cartItems, shippingAddress } = req.body;
+    const payload = await req.json();
+    const DOMAIN = 'https://www.comet-store.vercel.app';
 
-    if (!customer || !cartItems || !shippingAddress) {
-      return res.status(400).json({ error: 'Missing data in request body' });
+    const customerData = req.cookies.get('customer')?.value;
+    const cartData = req.cookies.get('cartItems')?.value;
+    const addressData = req.cookies.get('shippingAddress')?.value;
+
+    if (!customerData || !cartData || !addressData) {
+      return NextResponse.json({ error: 'Missing data in cookies' }, { status: 400 });
     }
 
-    const lineItems = cartItems.map((item: any) => ({
-      name: item.title,
-      price: item.price,
-      quantity: item.quantity,
+    const customer = JSON.parse(customerData);
+    const cartItems = JSON.parse(cartData);
+    const shippingAddress = JSON.parse(addressData);
+
+    const lineItems = cartItems.map((cartItem: CartItem) => ({
+      name: cartItem.item.title,
+      price: cartItem.item.price,
+      quantity: cartItem.quantity,
       metadata: {
-        productId: item._id,
-        size: item.size || 'N/A',
+        productId: cartItem.item._id,
+        size: cartItem.item.size || 'N/A',
       },
     }));
 
-    const totalAmount = lineItems.reduce(
-      (acc: number, item: any) => acc + item.price * item.quantity,
-      0
-    );
-
-    const DOMAIN = 'https://comet-store.vercel.app';
+    const totalAmount = lineItems.reduce((acc: number, item: any) => acc + item.price * item.quantity, 0);
 
     const body = {
       orderCode: Number(Date.now().toString().slice(-6)),
@@ -64,8 +62,8 @@ export default async function handler(
     const newOrder = new Order({
       customerClerkId: customer.clerkId,
       products: cartItems.map((item: any) => ({
-        product: new mongoose.Types.ObjectId(item._id),
-        size: item.size || 'N/A',
+        product: new mongoose.Types.ObjectId(item.item._id),
+        size: item.item.size || 'N/A',
         quantity: item.quantity,
       })),
       shippingAddress,
@@ -89,15 +87,12 @@ export default async function handler(
 
     await existingCustomer.save();
 
-    res.status(200).json({
-      paymentLink: checkoutUrl,
-      orderCode,
-      cartItems,
-      customer,
-      shippingAddress,
-    });
+    return NextResponse.json(
+      { paymentLink: checkoutUrl, orderCode, cartItems, customer, shippingAddress },
+      { status: 200 }
+    );
   } catch (error) {
     console.error('[checkout_POST] Error:', error);
-    res.status(500).json({ error: 'Internal server error' });
+    return NextResponse.json({ error: 'Internal server error' }, { status: 500 });
   }
 }
