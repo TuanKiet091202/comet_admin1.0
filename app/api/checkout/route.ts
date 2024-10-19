@@ -18,15 +18,15 @@ interface CartItem {
 
 export async function POST(req: NextRequest) {
   try {
+    const payload = await req.json();
     const DOMAIN = 'https://comet-store.vercel.app';
 
-    // Lấy dữ liệu từ cookies
     const customerData = cookies().get('customer');
     const cartData = cookies().get('cartItems');
     const addressData = cookies().get('shippingAddress');
 
     if (!customerData || !cartData || !addressData) {
-      return NextResponse.json({ error: 'Missing data in cookies' }, { status: 400 });
+      return new NextResponse('Missing data in cookies', { status: 400 });
     }
 
     const customer = JSON.parse(customerData.value);
@@ -77,7 +77,6 @@ export async function POST(req: NextRequest) {
     await newOrder.save();
 
     let existingCustomer = await Customer.findOne({ clerkId: customer.clerkId });
-
     if (existingCustomer) {
       existingCustomer.orders.push(newOrder._id);
     } else {
@@ -97,6 +96,6 @@ export async function POST(req: NextRequest) {
     );
   } catch (error) {
     console.error('[checkout_POST] Error:', error);
-    return NextResponse.json({ error: 'Internal server error' }, { status: 500 });
+    return new NextResponse('Internal server error.', { status: 500 });
   }
 }
