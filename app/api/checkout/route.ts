@@ -19,7 +19,7 @@ interface CartItem {
 export async function POST(req: NextRequest) {
   try {
     const payload = await req.json();
-    const DOMAIN = 'https://comet-store.vercel.app';
+    const DOMAIN = 'https://www.comet-store.vercel.app';
 
     const customerData = cookies().get('customer');
     const cartData = cookies().get('cartItems');
